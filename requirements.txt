@@ -6,3 +6,6 @@ gigachat
 yandexcloud
 PyJWT
 cryptograthy
+telethon
+chromadb
+asyncio
