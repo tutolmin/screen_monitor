@@ -2,20 +2,24 @@ import cv2
 import numpy as np
 import time
 from PIL import Image, ImageFilter, ImageEnhance
-import torch
-from transformers import AutoModelForCausalLM, AutoTokenizer
+#import torch
+#from transformers import AutoModelForCausalLM, AutoTokenizer
 import os
 from datetime import datetime
 import base64
 import requests
 import json
 from gigachat import GigaChat
+from langchain_gigachat.chat_models import GigaChat
+from langchain.chains.combine_documents import create_stuff_documents_chain
+from langchain_core.prompts import ChatPromptTemplate
+from langchain.callbacks.tracers import ConsoleCallbackHandler
 from telethon import TelegramClient, events
 import asyncio
 import re
-from chromadb.config import Settings
-from langchain_gigachat.embeddings.gigachat import GigaChatEmbeddings
-from langchain_chroma import Chroma
+#from chromadb.config import Settings
+#from langchain_gigachat.embeddings.gigachat import GigaChatEmbeddings
+#from langchain_chroma import Chroma
 
 
 class ScreenTextMonitor:
@@ -163,7 +167,7 @@ class ScreenTextMonitor:
 
         url = "https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText"
 
-        token = ""
+        token = "t1.9euelZqJyMaYkMuNjozHm8eZxpfGmO3rnpWaj53PlMnNmcvJjZWZzMiZz4_l9Pc7PSA2-e96YgKF3fT3e2sdNvnvemIChc3n9euelZqZiZWZnsnNjpvLkJGXkJbGxu_8zef1656Vms6PzpaZl4mZlMeWzI6Qjs6P7_3F656VmpmJlZmeyc2Om8uQkZeQlsbG.xiRVSV6fSSVeleAu_lrnp0p-Urb-kywhUuOURyfBtF7n7lunpf5UqIgg-ESwh0su6hvyi71DwZsgY9VblhzDDw"
 
         headers= {"Content-Type": "application/json",
                   "Authorization": "Bearer {:s}".format(token),
@@ -218,115 +222,15 @@ class ScreenTextMonitor:
 
     def query_gigachat_reason(self, text):
 
-        from langchain_gigachat.chat_models import GigaChat
-
         giga = GigaChat(
             credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            model="GigaChat-Max",
+            model="GigaChat",
 #            model="GigaChat",
             verify_ssl_certs=False,
             timeout=30,
         )   
-        # Используем те же эмбеддинги, что и при создании базы
-        embeddings = GigaChatEmbeddings(
-            credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            verify_ssl_certs=False
-        )
-
-        # Используем те же эмбеддинги, что и при создании базы
-        embeddings_pres = GigaChatEmbeddings(
-            credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            verify_ssl_certs=False
-        )
-
-        persist_directory = "./chroma_db_l_web"
-#        persist_directory = "./chroma_db_a_web"
-
-        # Загружаем базу
-        db = Chroma(
-            persist_directory=persist_directory,
-            embedding_function=embeddings
-        )
-
-        try:
-            # Получаем все чанки из базы
-            all_data = db.get()
-
-            if all_data and 'documents' in all_data and len(all_data['documents']) > 0:
-                total_chunks = len(all_data['documents'])
-                print(f"✅ Всего чанков в базе: {total_chunks}")
-#                print("="*50)
-            else:
-                print("❌ В базе нет чанков или база пуста")
-
-        except Exception as e:
-            print(f"❌ Ошибка при получении чанков: {e}")
-
-#        persist_directory_pres = "./chroma_db_l_pres"
-        persist_directory_pres = "./chroma_db_a_pres"
-#        persist_directory_pres = "./chroma_db_c_pres"
-
-        # Загружаем базу
-        db_pres = Chroma(
-            persist_directory=persist_directory_pres,
-            embedding_function=embeddings_pres
-        )
-
-        try:
-            # Получаем все чанки из базы
-            all_data = db_pres.get()
-
-            if all_data and 'documents' in all_data and len(all_data['documents']) > 0:
-                total_chunks = len(all_data['documents'])
-                print(f"✅ Всего чанков в базе pres: {total_chunks}")
-#                print("="*50)
-            else:
-                print("❌ В базе нет чанков или база пуста")
-
-        except Exception as e:
-            print(f"❌ Ошибка при получении чанков: {e}")
-
-        # RAG interact
-#        retriever = db.as_retriever()
-#        retriever = db.as_retriever(
-#            search_kwargs={"k": 3}  # использовать 3 чанка
-#        )
-        retriever = db.as_retriever(
-            search_type="mmr",
-            search_kwargs={
-#                "k": 5,           # Финальное количество чанков
-#                "fetch_k": 20,    # Сколько кандидатов рассматривать initially
-#                "lambda_mult": 0.8  # Коэффициент разнообразия (0-1), где 1 - максимальное разнообразие
-                "k": 4,           # Финальное количество чанков
-                "fetch_k": 10,    # Сколько кандидатов рассматривать initially
-                "lambda_mult": 0.4  # Коэффициент разнообразия (0-1), где 1 - максимальное разнообразие
-            }
-        )
-        retriever_pres = db_pres.as_retriever(
-            search_kwargs={"k": 3}  # использовать 3 чанка
-#            search_type="mmr",
-#            search_kwargs={
-#                "k": 5,           # Финальное количество чанков
-#                "fetch_k": 15,    # Сколько кандидатов рассматривать initially
-#                "lambda_mult": 0.7  # Коэффициент разнообразия (0-1), где 1 - максимальное разнообразие
-#            }
-#            search_kwargs={"k": 6}  # использовать 3 чанка
-        )
-        from langchain.retrievers import EnsembleRetriever
-        # Создаем ансамблевый ретривер
-        ensemble_retriever = EnsembleRetriever(
-            retrievers=[retriever, retriever_pres],
-            weights=[0.4, 0.6]  # веса для каждого ретривера
-        )
-
-        from langchain.chains import create_retrieval_chain
-        from langchain.chains.combine_documents import create_stuff_documents_chain
-        from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain.callbacks.tracers import ConsoleCallbackHandler
 
         template = """Ты - студент, сдающий экзамен.
-Дисциплина SRE Site Reliability Engineering.
 Перед тобой текст, распознанный со скриншота экрана монитора.
 Необходимо ответить на экзаменационное задание, описанное в тексте (входные данные).
 Для ответа на вопрос необходимо провести анализ, выполнить вычисления или построить логическую цепочку.
@@ -364,7 +268,6 @@ class ScreenTextMonitor:
 
         # Промпт для классификации задания - должен быть ChatPromptTemplate
         reason_template = """Ты - студент, сдающий экзамен.
-Дисциплина SRE Site Reliability Engineering.
 Перед тобой текст, распознанный со скриншота экрана монитора.
 Возможно, в тексте кроме самого экзаменационного задания есть паразитные слова и символы, которые надо проигнорировать.
 Возможно, в тексте есть название кнопок навигации по тесту, такие как Продолжить, Назад, Ответить, Завершить.
@@ -443,115 +346,15 @@ class ScreenTextMonitor:
 
     def query_gigachat_rag(self, text):
 
-        from langchain_gigachat.chat_models import GigaChat
-
         giga = GigaChat(
             credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            model="GigaChat-Max",
+            model="GigaChat",
 #            model="GigaChat",
             verify_ssl_certs=False,
             timeout=30,
         )   
-        # Используем те же эмбеддинги, что и при создании базы
-        embeddings = GigaChatEmbeddings(
-            credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            verify_ssl_certs=False
-        )
-
-        # Используем те же эмбеддинги, что и при создании базы
-        embeddings_pres = GigaChatEmbeddings(
-            credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            verify_ssl_certs=False
-        )
-
-        persist_directory = "./chroma_db_l_web"
-#        persist_directory = "./chroma_db_a_web"
-
-        # Загружаем базу
-        db = Chroma(
-            persist_directory=persist_directory,
-            embedding_function=embeddings
-        )
-
-        try:
-            # Получаем все чанки из базы
-            all_data = db.get()
-
-            if all_data and 'documents' in all_data and len(all_data['documents']) > 0:
-                total_chunks = len(all_data['documents'])
-                print(f"✅ Всего чанков в базе: {total_chunks}")
-#                print("="*50)
-            else:
-                print("❌ В базе нет чанков или база пуста")
-
-        except Exception as e:
-            print(f"❌ Ошибка при получении чанков: {e}")
-
-#        persist_directory_pres = "./chroma_db_l_pres"
-        persist_directory_pres = "./chroma_db_a_pres"
-#        persist_directory_pres = "./chroma_db_c_pres"
-
-        # Загружаем базу
-        db_pres = Chroma(
-            persist_directory=persist_directory_pres,
-            embedding_function=embeddings_pres
-        )
-
-        try:
-            # Получаем все чанки из базы
-            all_data = db_pres.get()
-
-            if all_data and 'documents' in all_data and len(all_data['documents']) > 0:
-                total_chunks = len(all_data['documents'])
-                print(f"✅ Всего чанков в базе pres: {total_chunks}")
-#                print("="*50)
-            else:
-                print("❌ В базе нет чанков или база пуста")
-
-        except Exception as e:
-            print(f"❌ Ошибка при получении чанков: {e}")
-
-        # RAG interact
-#        retriever = db.as_retriever()
-#        retriever = db.as_retriever(
-#            search_kwargs={"k": 3}  # использовать 3 чанка
-#        )
-        retriever = db.as_retriever(
-            search_type="mmr",
-            search_kwargs={
-#                "k": 5,           # Финальное количество чанков
-#                "fetch_k": 20,    # Сколько кандидатов рассматривать initially
-#                "lambda_mult": 0.8  # Коэффициент разнообразия (0-1), где 1 - максимальное разнообразие
-                "k": 4,           # Финальное количество чанков
-                "fetch_k": 10,    # Сколько кандидатов рассматривать initially
-                "lambda_mult": 0.4  # Коэффициент разнообразия (0-1), где 1 - максимальное разнообразие
-            }
-        )
-        retriever_pres = db_pres.as_retriever(
-            search_kwargs={"k": 3}  # использовать 3 чанка
-#            search_type="mmr",
-#            search_kwargs={
-#                "k": 6,           # Финальное количество чанков
-#                "fetch_k": 20,    # Сколько кандидатов рассматривать initially
-#                "lambda_mult": 0.7  # Коэффициент разнообразия (0-1), где 1 - максимальное разнообразие
-#            }
-#            search_kwargs={"k": 6}  # использовать 3 чанка
-        )
-        from langchain.retrievers import EnsembleRetriever
-        # Создаем ансамблевый ретривер
-        ensemble_retriever = EnsembleRetriever(
-            retrievers=[retriever, retriever_pres],
-            weights=[0.4, 0.6]  # веса для каждого ретривера
-        )
-
-        from langchain.chains import create_retrieval_chain
-        from langchain.chains.combine_documents import create_stuff_documents_chain
-        from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain.callbacks.tracers import ConsoleCallbackHandler
 
         template = """Ты - студент, сдающий экзамен.
-Дисциплина SRE Site Reliability Engineering.
 Перед тобой текст, распознанный со скриншота экрана монитора.
 Необходимо ответить на экзаменационное задание, описанное в тексте (входные данные).
 Возможно, в тексте кроме самого экзаменационного задания есть паразитные слова и символы, которые надо проигнорировать.
@@ -701,16 +504,10 @@ class ScreenTextMonitor:
 
 
     def query_gigachat_task_type(self, text):
-        from langchain_gigachat.chat_models import GigaChat
-        from langchain.chains import create_retrieval_chain
-        from langchain.chains.combine_documents import create_stuff_documents_chain
-        from langchain.schema.runnable import RunnablePassthrough, RunnableLambda
-        from langchain_core.prompts import ChatPromptTemplate
-        from langchain.callbacks.tracers import ConsoleCallbackHandler
 
         giga = GigaChat(
             credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            model="GigaChat-Max",
+            model="GigaChat",
             verify_ssl_certs=False,
             timeout=30,
         )
@@ -719,7 +516,6 @@ class ScreenTextMonitor:
         query_extraction_prompt = ChatPromptTemplate.from_template("""
 Перед тобой текст, распознанный со скриншота (снимка экрана).
 Текст содержит экзаменационное задание с несколькими вариантами ответа.
-Дисциплина SRE Site Reliability Engineering.
 Кроме этого в тексте могут встречаться всевозможные паразитные символы, которые были распознаны ошибочно.
 Также в тексте могут быть название темы и название дисциплины или предметной области.
 Возможно, в тексте есть название кнопок навигации по тесту, такие как Продолжить, Назад, Ответить, Завершить.
@@ -748,7 +544,6 @@ class ScreenTextMonitor:
         # Промпт для классификации задания - должен быть ChatPromptTemplate
         classification_prompt = ChatPromptTemplate.from_template(""" 
 Классифицируй экзаменационное задание.
-Дисциплина SRE Site Reliability Engineering.
 Выбери один из вариантов: 1 - Проверка знания определённого факта, 2 - Анализ, выведение или вычисление ответа в результате рассуждения.
 Если для нахождения ответа не требуется строить логическую цепочку или выполнять вычисления, значит задание первого типа. Если необходимо что-то проанализировать или вычислить - второго.
 
@@ -966,7 +761,7 @@ class ScreenTextMonitor:
 
 def main():
     # Настройки
-    CAMERA_INDEX = 1  # 0 - обычно встроенная камеры, 1 - внешняя камера
+    CAMERA_INDEX = 0  # 0 - обычно встроенная камеры, 1 - внешняя камера
     SIMILARITY_THRESHOLD = 0.99  # 95% схожести
 
     try:
