@@ -17,6 +17,11 @@ from langchain.callbacks.tracers import ConsoleCallbackHandler
 from telethon import TelegramClient, events
 import asyncio
 import re
+import yandexcloud
+from yandex.cloud.iam.v1.iam_token_service_pb2 import (CreateIamTokenRequest)
+from yandex.cloud.iam.v1.iam_token_service_pb2_grpc import IamTokenServiceStub
+import jwt
+
 #from chromadb.config import Settings
 #from langchain_gigachat.embeddings.gigachat import GigaChatEmbeddings
 #from langchain_chroma import Chroma
@@ -59,6 +64,7 @@ class ScreenTextMonitor:
 #        self.client = TelegramClient(session_name, api_id, api_hash)
 
         self.search_query = ""
+        self.token = self.get_token()
 
     def log_message(self, message):
         timestamp = datetime.now().strftime('%H:%M:%S')
@@ -74,6 +80,65 @@ class ScreenTextMonitor:
         cv2.imwrite(filepath, image)
         self.log_message(f"Изображение сохранено: {filepath}")
         return filepath
+
+    def get_token(self):
+
+        key_path = 'keys/authorized_key.json'
+
+        # Чтение закрытого ключа из JSON-файла
+        with open(key_path, 'r') as f:
+          obj = f.read()
+          obj = json.loads(obj)
+          private_key = obj['private_key']
+          key_id = obj['id']
+          service_account_id = obj['service_account_id']
+
+        sa_key = {
+            "id": key_id,
+            "service_account_id": service_account_id,  
+            "private_key": private_key
+        }
+
+        def create_iam_token():
+          jwt = create_jwt()
+
+          sdk = yandexcloud.SDK(service_account_key=sa_key)
+          iam_service = sdk.client(IamTokenServiceStub)
+          iam_token = iam_service.Create(
+              CreateIamTokenRequest(jwt=jwt)
+          )
+
+          self.log_message(f"Your IAM token: {iam_token.iam_token}")
+#          print("Your iam token:")
+#          print(iam_token.iam_token)
+
+          return iam_token.iam_token
+
+        def create_jwt():
+            now = int(time.time())
+            payload = {
+                    'aud': 'https://iam.api.cloud.yandex.net/iam/v1/tokens',
+                    'iss': service_account_id,
+                    'iat': now,
+                    'exp': now + 3600
+                }
+
+            # Формирование JWT.
+            encoded_token = jwt.encode(
+                payload,
+                private_key,
+                algorithm='PS256',
+                headers={'kid': key_id}
+            )
+
+            self.log_message(f"Your JWT token: {encoded_token}")
+#            print(encoded_token)
+
+            return encoded_token
+
+        #create_jwt()
+        token = create_iam_token()
+        return token
 
     # Создайте функцию, которая кодирует файл и возвращает результат.
     def encode_file(self, file_path):
@@ -167,10 +232,10 @@ class ScreenTextMonitor:
 
         url = "https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText"
 
-        token = "t1.9euelZqJyMaYkMuNjozHm8eZxpfGmO3rnpWaj53PlMnNmcvJjZWZzMiZz4_l9Pc7PSA2-e96YgKF3fT3e2sdNvnvemIChc3n9euelZqZiZWZnsnNjpvLkJGXkJbGxu_8zef1656Vms6PzpaZl4mZlMeWzI6Qjs6P7_3F656VmpmJlZmeyc2Om8uQkZeQlsbG.xiRVSV6fSSVeleAu_lrnp0p-Urb-kywhUuOURyfBtF7n7lunpf5UqIgg-ESwh0su6hvyi71DwZsgY9VblhzDDw"
+#        token = self.get_token() 
 
         headers= {"Content-Type": "application/json",
-                  "Authorization": "Bearer {:s}".format(token),
+                  "Authorization": "Bearer {:s}".format(self.token),
                   "x-folder-id": "b1ghg3qttqeg3e6qpgp5",
                   "x-data-logging-enabled": "true"}
 
@@ -444,6 +509,31 @@ class ScreenTextMonitor:
             self.log_message(f"Другая ошибка: {e}")
             return {"error": f"Ошибка при обработке ответа"}
 
+    def send_capture_sync(self, image, **kwargs):
+        """
+        Синхронный метод для отправки уведомлений
+        """
+        async def async_wrapper():
+            async with TelegramClient(self.session_name, self.api_id, self.api_hash) as client:
+                self.client = client
+                await self._send_capture_async(image, **kwargs)
+        
+        asyncio.run(async_wrapper())
+   
+    async def _send_capture_async(self, image, recipient='LinuxGodsWorkaholicBot'):
+
+        """
+        Асинхронная реализация отправки уведомлений
+        """
+        try:
+            entity = await self.client.get_entity(recipient)
+
+            await self.client.send_file(entity, image)
+            self.log_message(f"Отправлено capture")
+                            
+        except Exception as e:
+            self.log_message(f"Ошибка: {e}")
+   
     def send_notifications_sync(self, answers, **kwargs):
         """
         Синхронный метод для отправки уведомлений
@@ -641,13 +731,14 @@ class ScreenTextMonitor:
                 current_frame_captured = self.capture_frame()
 
                 # Поворот кадра
-#                current_frame_rotated = cv2.rotate(current_frame_captured, cv2.ROTATE_180)
-                current_frame_rotated = cv2.flip(current_frame_captured, -1)
+##                current_frame_rotated = cv2.rotate(current_frame_captured, cv2.ROTATE_180)
+#                current_frame_rotated = cv2.flip(current_frame_captured, -1)
 
                 # Обрезаем до 1280x720 если они больше
-#                current_frame = self.center_crop(current_frame_rotated, 1280, 720)
-                current_frame = self.center_crop(current_frame_rotated, 1366, 768)
-#                current_frame = self.center_crop(current_frame_rotated, 1600, 900)
+##                current_frame = self.center_crop(current_frame_rotated, 1280, 720)
+#                current_frame = self.center_crop(current_frame_rotated, 1366, 768)
+##                current_frame = self.center_crop(current_frame_rotated, 1600, 900)
+                current_frame = current_frame_captured
 
                 self.frame_count += 1
 
@@ -673,6 +764,7 @@ class ScreenTextMonitor:
                 # Сохранение оригинального изображения
                 orig_image = self.save_image(current_frame, "original")
 #                orig_image = "images/Screenshot 2025-10-23 09-58-38.png"
+                self.send_capture_sync(orig_image)
 
 #                processed_image = self.preprocess_image(current_frame)
 
