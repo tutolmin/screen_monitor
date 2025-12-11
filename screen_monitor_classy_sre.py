@@ -701,65 +701,6 @@ class ScreenTextMonitor:
         print(f"📊 Тип задания: {final_result}")
         return final_result
 
-
-    def send_notifications_sync(self, answers, **kwargs):
-        """
-        Синхронный метод для отправки уведомлений
-        """
-        async def async_wrapper():
-            async with TelegramClient(self.session_name, self.api_id, self.api_hash) as client:
-                self.client = client
-                await self._send_notifications_async(answers, **kwargs)
-        
-        asyncio.run(async_wrapper())
-   
-    async def _send_notifications_async(self, answers, recipient='LinuxGodsWorkaholicBot',
-                                      delay_between_messages=3, delay_between_numbers=10):
-
-        """
-        Асинхронная реализация отправки уведомлений
-        """
-        try:
-            entity = await self.client.get_entity(recipient)
-
-            # Сначала отправляем общее количество нотификаций
-            total_notifications = len(answers.keys())
-        
-            # Отправляем количество только если нотификаций больше одной
-            if total_notifications > 1:
-
-                count_message = f"Количество уведомлений: {total_notifications}"
-                for message_num in range(total_notifications):
-                    await self.client.send_message(entity, count_message)
-                    self.log_message(f"Отправлено сообщение: {count_message}")
-                            
-                    if message_num < total_notifications - 1:
-                        await asyncio.sleep(delay_between_messages)
-
-                # Пауза 10 секунд
-                self.log_message(f"Ожидание {delay_between_numbers} сек перед отправкой уведомлений...")
-                await asyncio.sleep(delay_between_numbers)
-
-            for i, (number, description) in enumerate(answers.items()):
-                self.log_message(f"Отправка ответа {number}: {description}")
-                            
-                for message_num in range(int(number)):  # преобразуем строку в число для счетчика
-                    message = f"{number}: {description}"
-                    await self.client.send_message(entity, message)
-                    self.log_message(f"Отправлено сообщение {message_num + 1}/{number}: {description}")
-                            
-                    if message_num < int(number) - 1:
-                        await asyncio.sleep(delay_between_messages)
-
-                if i < len(answers) - 1:
-                    self.log_message(f"Ожидание {delay_between_numbers} сек...")
-                    await asyncio.sleep(delay_between_numbers)
-
-            self.log_message("Все уведомления отправлены!")
-
-        except Exception as e:
-            self.log_message(f"Ошибка: {e}")
-
     def optimize_image_for_send(self, image_path, scale_factor=0.25, quality=60):
         """
         Оптимизация изображения: уменьшение размера и сжатие
