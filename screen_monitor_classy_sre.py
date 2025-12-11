@@ -6,7 +6,7 @@ import os
 import base64
 import requests
 import json
-from gigachat import GigaChat
+#from gigachat import GigaChat
 from langchain_gigachat.chat_models import GigaChat
 from langchain.chains.combine_documents import create_stuff_documents_chain
 from langchain_core.prompts import ChatPromptTemplate
@@ -18,7 +18,6 @@ import yandexcloud
 from yandex.cloud.iam.v1.iam_token_service_pb2 import (CreateIamTokenRequest)
 from yandex.cloud.iam.v1.iam_token_service_pb2_grpc import IamTokenServiceStub
 import jwt
-import time
 from datetime import datetime, timedelta
 import threading
 from dotenv import load_dotenv
@@ -154,8 +153,8 @@ class ScreenTextMonitor:
         # Устанавливаем размер буфера в 1 (самый новый кадр)
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-        self.api_id = os.environ["TG_API_ID"]
-        self.api_hash = os.environ["TG_API_HASH"]
+        self.api_id = os.getenv["TG_API_ID"]
+        self.api_hash = os.getenv["TG_API_HASH"]
         self.session_name = "beep"
 
         self.search_query = ""
@@ -180,65 +179,6 @@ class ScreenTextMonitor:
         cv2.imwrite(filepath, image)
         self.log_message(f"Изображение сохранено: {filepath}")
         return filepath
-
-    def get_token(self):
-
-        key_path = 'keys/authorized_key.json'
-
-        # Чтение закрытого ключа из JSON-файла
-        with open(key_path, 'r') as f:
-          obj = f.read()
-          obj = json.loads(obj)
-          private_key = obj['private_key']
-          key_id = obj['id']
-          service_account_id = obj['service_account_id']
-
-        sa_key = {
-            "id": key_id,
-            "service_account_id": service_account_id,  
-            "private_key": private_key
-        }
-
-        def create_iam_token():
-          jwt = create_jwt()
-
-          sdk = yandexcloud.SDK(service_account_key=sa_key)
-          iam_service = sdk.client(IamTokenServiceStub)
-          iam_token = iam_service.Create(
-              CreateIamTokenRequest(jwt=jwt)
-          )
-
-          self.log_message(f"Your IAM token: {iam_token.iam_token}")
-#          print("Your iam token:")
-#          print(iam_token.iam_token)
-
-          return iam_token.iam_token
-
-        def create_jwt():
-            now = int(time.time())
-            payload = {
-                    'aud': 'https://iam.api.cloud.yandex.net/iam/v1/tokens',
-                    'iss': service_account_id,
-                    'iat': now,
-                    'exp': now + 3600
-                }
-
-            # Формирование JWT.
-            encoded_token = jwt.encode(
-                payload,
-                private_key,
-                algorithm='PS256',
-                headers={'kid': key_id}
-            )
-
-            self.log_message(f"Your JWT token: {encoded_token}")
-#            print(encoded_token)
-
-            return encoded_token
-
-        #create_jwt()
-        token = create_iam_token()
-        return token
 
     # Создайте функцию, которая кодирует файл и возвращает результат.
     def encode_file(self, file_path):
@@ -388,7 +328,7 @@ class ScreenTextMonitor:
     def query_gigachat_reason(self, text):
 
         giga = GigaChat(
-            credentials=os.environ["GIGACHAT_CREDENTIALS"],
+            credentials=os.getenv["GIGACHAT_CREDENTIALS"],
             model="GigaChat",
 #            model="GigaChat",
             verify_ssl_certs=False,
@@ -512,7 +452,7 @@ class ScreenTextMonitor:
     def query_gigachat_rag(self, text):
 
         giga = GigaChat(
-            credentials=os.environ["GIGACHAT_CREDENTIALS"],
+            credentials=os.getenv["GIGACHAT_CREDENTIALS"],
             model="GigaChat",
 #            model="GigaChat",
             verify_ssl_certs=False,
@@ -696,7 +636,7 @@ class ScreenTextMonitor:
     def query_gigachat_task_type(self, text):
 
         giga = GigaChat(
-            credentials=os.environ["GIGACHAT_CREDENTIALS"],
+            credentials=os.getenv["GIGACHAT_CREDENTIALS"],
             model="GigaChat",
             verify_ssl_certs=False,
             timeout=30,
