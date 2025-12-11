@@ -41,6 +41,10 @@ class YandexCloudAuthManager:
         self.lock = threading.RLock()  # Для потокобезопасного доступа
         self._load_service_account_key()
 
+    def log_message(self, message):
+        timestamp = datetime.now().strftime('%H:%M:%S')
+        print(f"[{timestamp}] {message}")
+
     def _load_service_account_key(self):
         """Загрузка ключа сервисного аккаунта"""
         with open(self.service_account_key_path, 'r') as f:
@@ -87,11 +91,11 @@ class YandexCloudAuthManager:
             self.iam_token = response.iam_token
             self.token_expires_at = datetime.now() + timedelta(hours=11)
 
-            print(f"[AUTH] Получен новый IAM-токен, действителен до: {self.token_expires_at}")
+            self.log_message(f"Получен новый IAM-токен, действителен до: {self.token_expires_at}")
             return self.iam_token
 
         except Exception as e:
-            print(f"[AUTH] Ошибка получения IAM-токена: {str(e)}")
+            self.log_message(f"Ошибка получения IAM-токена: {str(e)}")
             raise
 
     def get_valid_token(self):
@@ -108,18 +112,18 @@ class YandexCloudAuthManager:
                 self.token_expires_at is None or
                 datetime.now() >= self.token_expires_at - timedelta(minutes=5)):
 
-                print("[AUTH] Токен отсутствует или скоро истечет, обновляем...")
+                self.log_message("Токен отсутствует или скоро истечет, обновляем...")
                 return self._get_new_iam_token()
 
             # Токен действителен
             time_remaining = self.token_expires_at - datetime.now()
-            print(f"[AUTH] Используется существующий токен, осталось: {time_remaining}")
+            self.log_message(f"Используется существующий токен, осталось: {time_remaining}")
             return self.iam_token
 
     def force_refresh(self):
         """Принудительное обновление токена"""
         with self.lock:
-            print("[AUTH] Принудительное обновление токена...")
+            self.log_message("Принудительное обновление токена...")
             return self._get_new_iam_token()
         
 class ScreenTextMonitor:
@@ -366,11 +370,12 @@ class ScreenTextMonitor:
         result = ""
         try:
         # Вариант 3: Универсальный
-            result = rag_chain.invoke({"input": text}, config={"callbacks": [ConsoleCallbackHandler()]})
-#            result = rag_chain.invoke({"input": text})
+#            result = rag_chain.invoke({"input": text}, config={"callbacks": [ConsoleCallbackHandler()]})
+            result = rag_chain.invoke({"input": text})
         except Exception as e:
             self.log_message(f"Ошибка запроса к LLM: {e}")
         reason = result if not isinstance(result, dict) else result.get("output", result)
+        print(f"Суммаризация рассуждений: {reason}")
 
 
         # Промпт для классификации задания - должен быть ChatPromptTemplate
@@ -423,8 +428,8 @@ class ScreenTextMonitor:
         result = ""
         try:
             # Шаг 2: Классифицируем используя ТОЛЬКО search_query
-            result = reasoning_chain.invoke({"reason": reason, "input": text}, config={"callbacks": [ConsoleCallbackHandler()]})
-#            result = reasoning_chain.invoke({"reason": reason, "input": text})
+#            result = reasoning_chain.invoke({"reason": reason, "input": text}, config={"callbacks": [ConsoleCallbackHandler()]})
+            result = reasoning_chain.invoke({"reason": reason, "input": text})
         except Exception as e:
             self.log_message(f"Ошибка запроса к LLM: {e}")
 
@@ -515,8 +520,8 @@ class ScreenTextMonitor:
         result = ""
         try:
             # Вариант 3: Универсальный
-            result = rag_chain.invoke({"input": text}, config={"callbacks": [ConsoleCallbackHandler()]})
-#            result = rag_chain.invoke({"input": text})
+#            result = rag_chain.invoke({"input": text}, config={"callbacks": [ConsoleCallbackHandler()]})
+            result = rag_chain.invoke({"input": text})
         except Exception as e:
             self.log_message(f"Ошибка запроса к LLM: {e}")
 
@@ -551,17 +556,42 @@ class ScreenTextMonitor:
             self.log_message(f"Другая ошибка: {e}")
             return {"error": f"Ошибка при обработке ответа"}
 
-    def send_capture_sync(self, image, **kwargs):
+#    def send_capture_sync(self, image, **kwargs):
+#        """
+#        Синхронный метод для отправки уведомлений
+#        """
+#        async def async_wrapper():
+#            async with TelegramClient(self.session_name, self.api_id, self.api_hash) as client:
+#                self.client = client
+#                await self._send_capture_async(image, **kwargs)
+#        
+#        asyncio.run(async_wrapper())
+
+    def send_capture_sync(self, image_path, **kwargs):
         """
-        Синхронный метод для отправки уведомлений
+        Синхронный метод для отправки изображений с обработкой асинхронного контекста
         """
         async def async_wrapper():
             async with TelegramClient(self.session_name, self.api_id, self.api_hash) as client:
                 self.client = client
-                await self._send_capture_async(image, **kwargs)
+                await self._send_capture_async(image_path, **kwargs)
         
-        asyncio.run(async_wrapper())
-   
+        try:
+            # Пытаемся запустить новый event loop
+            asyncio.run(async_wrapper())
+        except RuntimeError as e:
+            # Если уже есть запущенный event loop (например, в Jupyter или другом async контексте)
+            if "asyncio.run() cannot be called from a running event loop" in str(e):
+                self.log_message("Обнаружен работающий event loop, используем его")
+                loop = asyncio.get_event_loop()
+                if loop.is_running():
+                    # Запускаем в существующем loop
+                    loop.create_task(async_wrapper())
+                else:
+                    loop.run_until_complete(async_wrapper())
+            else:
+                raise
+
     async def _send_capture_async(self, image, recipient='LinuxGodsWorkaholicBot'):
 
         """
@@ -666,8 +696,8 @@ class ScreenTextMonitor:
             text = full_input["input"]
             search_query = ""
             try:
-                search_query = query_extraction_chain.invoke({"input": text}, config={"callbacks": [ConsoleCallbackHandler()]}).content
-#                search_query = query_extraction_chain.invoke({"input": text}).content
+#                search_query = query_extraction_chain.invoke({"input": text}, config={"callbacks": [ConsoleCallbackHandler()]}).content
+                search_query = query_extraction_chain.invoke({"input": text}).content
             except Exception as e:
                 self.log_message(f"Ошибка запроса к LLM: {e}")
             print(f"🔍 Извлеченный поисковый запрос: '{search_query}'")
@@ -691,8 +721,8 @@ class ScreenTextMonitor:
         result = "2" 
         try:
             # Шаг 2: Классифицируем используя ТОЛЬКО search_query
-            result = classification_chain.invoke({"search_query": self.search_query}, config={"callbacks": [ConsoleCallbackHandler()]})
-#            result = classification_chain.invoke({"search_query": self.search_query})
+#            result = classification_chain.invoke({"search_query": self.search_query}, config={"callbacks": [ConsoleCallbackHandler()]})
+            result = classification_chain.invoke({"search_query": self.search_query})
         except Exception as e:
             self.log_message(f"Ошибка запроса к LLM: {e}")
 
@@ -840,7 +870,7 @@ class ScreenTextMonitor:
                 print(text)
                 print("="*50)
 
-                self.log_message("\nЗапрос модели...")
+                self.log_message("Запрос модели...")
                 answer = self.query_gigachat_task_type(text)
 
                 # Вывод результата
