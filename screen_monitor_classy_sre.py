@@ -2,10 +2,7 @@ import cv2
 import numpy as np
 import time
 from PIL import Image, ImageFilter, ImageEnhance
-#import torch
-#from transformers import AutoModelForCausalLM, AutoTokenizer
 import os
-from datetime import datetime
 import base64
 import requests
 import json
@@ -21,14 +18,113 @@ import yandexcloud
 from yandex.cloud.iam.v1.iam_token_service_pb2 import (CreateIamTokenRequest)
 from yandex.cloud.iam.v1.iam_token_service_pb2_grpc import IamTokenServiceStub
 import jwt
+import time
+from datetime import datetime, timedelta
+import threading
+from dotenv import load_dotenv
 
-#from chromadb.config import Settings
-#from langchain_gigachat.embeddings.gigachat import GigaChatEmbeddings
-#from langchain_chroma import Chroma
+# Загружаем переменные окружения из файла .env
+load_dotenv()
 
+class YandexCloudAuthManager:
+    """Менеджер аутентификации Yandex Cloud с автоматическим обновлением токенов"""
 
+    def __init__(self, service_account_key_path):
+        """
+        Инициализация менеджера аутентификации
+
+        Args:
+            service_account_key_path: путь к JSON-файлу с ключом сервисного аккаунта
+        """
+        self.service_account_key_path = service_account_key_path
+        self.iam_token = None
+        self.token_expires_at = None
+        self.lock = threading.RLock()  # Для потокобезопасного доступа
+        self._load_service_account_key()
+
+    def _load_service_account_key(self):
+        """Загрузка ключа сервисного аккаунта"""
+        with open(self.service_account_key_path, 'r') as f:
+            key_data = json.load(f)
+            self.service_account_id = key_data['service_account_id']
+            self.key_id = key_data['id']
+            self.private_key = key_data['private_key']
+
+    def _create_jwt(self):
+        """Создание JWT-токена для получения IAM-токена"""
+        now = int(time.time())
+        payload = {
+            'aud': 'https://iam.api.cloud.yandex.net/iam/v1/tokens',
+            'iss': self.service_account_id,
+            'iat': now,
+            'exp': now + 3600  # JWT действует 1 час
+        }
+
+        return jwt.encode(
+            payload,
+            self.private_key,
+            algorithm='PS256',
+            headers={'kid': self.key_id}
+        )
+
+    def _get_new_iam_token(self):
+        """Получение нового IAM-токена от Yandex Cloud API"""
+        try:
+            # Создаем JWT
+            jwt_token = self._create_jwt()
+
+            # Инициализируем SDK с ключом сервисного аккаунта
+            sdk = yandexcloud.SDK(service_account_key={
+                "service_account_id": self.service_account_id,
+                "id": self.key_id,
+                "private_key": self.private_key
+            })
+
+            # Получаем IAM-токен
+            iam_service = sdk.client(IamTokenServiceStub)
+            response = iam_service.Create(CreateIamTokenRequest(jwt=jwt_token))
+
+            # Токен действителен 12 часов, но обновляем через 11 для надежности
+            self.iam_token = response.iam_token
+            self.token_expires_at = datetime.now() + timedelta(hours=11)
+
+            print(f"[AUTH] Получен новый IAM-токен, действителен до: {self.token_expires_at}")
+            return self.iam_token
+
+        except Exception as e:
+            print(f"[AUTH] Ошибка получения IAM-токена: {str(e)}")
+            raise
+
+    def get_valid_token(self):
+        """
+        Получение действительного IAM-токена.
+        Если токен отсутствует или истек срок действия - обновляет его.
+
+        Returns:
+            Действительный IAM-токен
+        """
+        with self.lock:
+            # Если токена нет или срок истек (или истекает через 5 минут)
+            if (self.iam_token is None or
+                self.token_expires_at is None or
+                datetime.now() >= self.token_expires_at - timedelta(minutes=5)):
+
+                print("[AUTH] Токен отсутствует или скоро истечет, обновляем...")
+                return self._get_new_iam_token()
+
+            # Токен действителен
+            time_remaining = self.token_expires_at - datetime.now()
+            print(f"[AUTH] Используется существующий токен, осталось: {time_remaining}")
+            return self.iam_token
+
+    def force_refresh(self):
+        """Принудительное обновление токена"""
+        with self.lock:
+            print("[AUTH] Принудительное обновление токена...")
+            return self._get_new_iam_token()
+        
 class ScreenTextMonitor:
-    def __init__(self, camera_index=0, similarity_threshold=0.90, api_id="25315069", api_hash='419b7cd9f055a855ffd2f06948ab882e', session_name='beep'):
+    def __init__(self, camera_index=0, similarity_threshold=0.90):
         """
         Инициализация монитора
 
@@ -58,13 +154,17 @@ class ScreenTextMonitor:
         # Устанавливаем размер буфера в 1 (самый новый кадр)
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-        self.api_id = api_id
-        self.api_hash = api_hash
-        self.session_name = session_name
-#        self.client = TelegramClient(session_name, api_id, api_hash)
+        self.api_id = os.environ["TG_API_ID"]
+        self.api_hash = os.environ["TG_API_HASH"]
+        self.session_name = "beep"
 
         self.search_query = ""
-        self.token = self.get_token()
+        # Берем пути из переменных окружения
+        key_path = os.getenv('YANDEX_SERVICE_ACCOUNT_KEY_PATH', 'keys/authorized_key.json')
+        self.auth_manager = YandexCloudAuthManager(key_path)
+        
+        # Сохраняем folder_id из переменных окружения
+        self.folder_id = os.getenv('YANDEX_FOLDER_ID')
 
     def log_message(self, message):
         timestamp = datetime.now().strftime('%H:%M:%S')
@@ -228,15 +328,15 @@ class ScreenTextMonitor:
                 "languageCodes": ["ru","en"],
                 "content": self.encode_file(image)}
         #        "content": encode_file("/var/tmp/screens/original_20251021_113151_1.png")}
-        #        "content": encode_file("images/8930.jpg")}
 
         url = "https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText"
-
-#        token = self.get_token() 
-
+ 
+        # Получаем действительный токен через менеджер
+        token = self.auth_manager.get_valid_token()
+        
         headers= {"Content-Type": "application/json",
-                  "Authorization": "Bearer {:s}".format(self.token),
-                  "x-folder-id": "b1ghg3qttqeg3e6qpgp5",
+                  "Authorization": f"Bearer {token}",
+                  "x-folder-id": self.folder_id,
                   "x-data-logging-enabled": "true"}
 
         try:
@@ -718,6 +818,62 @@ class ScreenTextMonitor:
         except Exception as e:
             self.log_message(f"Ошибка: {e}")
 
+    def optimize_image_for_send(self, image_path, scale_factor=0.25, quality=60):
+        """
+        Оптимизация изображения: уменьшение размера и сжатие
+        
+        Args:
+            image_path: путь к оригинальному изображению
+            scale_factor: коэффициент масштабирования (0.25 = в 4 раза меньше)
+            quality: качество JPEG (1-100)
+        
+        Returns:
+            Путь к оптимизированному изображению
+        """
+        try:
+            # Загрузка изображения
+            img = cv2.imread(image_path)
+            if img is None:
+                self.log_message(f"Ошибка загрузки изображения: {image_path}")
+                return image_path  # Возвращаем оригинал в случае ошибки
+            
+            # Получаем оригинальные размеры
+            height, width = img.shape[:2]
+            self.log_message(f"Оригинальный размер: {width}x{height}")
+            
+            # Уменьшаем в 4 раза (scale_factor=0.25)
+            new_width = int(width * scale_factor)
+            new_height = int(height * scale_factor)
+            
+            # Масштабируем с интерполяцией для сохранения читаемости
+            optimized_img = cv2.resize(img, (new_width, new_height), 
+                                       interpolation=cv2.INTER_AREA)
+            
+            # Создаем путь для оптимизированного изображения
+            orig_dir = os.path.dirname(image_path)
+            orig_filename = os.path.basename(image_path)
+            name_without_ext, ext = os.path.splitext(orig_filename)
+            optimized_filename = f"optimized_{name_without_ext}.jpg"
+            optimized_path = os.path.join(orig_dir, optimized_filename)
+            
+            # Сохраняем с максимальным сжатием (низкое качество JPEG)
+            cv2.imwrite(optimized_path, optimized_img, 
+                        [cv2.IMWRITE_JPEG_QUALITY, quality])
+            
+            # Сравниваем размеры файлов
+            orig_size = os.path.getsize(image_path) / 1024  # в КБ
+            opt_size = os.path.getsize(optimized_path) / 1024
+            compression_ratio = orig_size / opt_size if opt_size > 0 else 0
+            
+            self.log_message(f"Оптимизированный размер: {new_width}x{new_height}")
+            self.log_message(f"Размер файла: {orig_size:.1f}КБ → {opt_size:.1f}КБ (сжатие в {compression_ratio:.1f} раз)")
+            
+            return optimized_path
+            
+        except Exception as e:
+            self.log_message(f"Ошибка оптимизации изображения: {str(e)}")
+            return image_path  # Возвращаем оригинал в случае ошибки
+
     def run_monitoring(self):
         """Основной цикл мониторинга"""
         print("Запуск мониторинга...")
@@ -737,8 +893,8 @@ class ScreenTextMonitor:
                 # Обрезаем до 1280x720 если они больше
 ##                current_frame = self.center_crop(current_frame_rotated, 1280, 720)
 #                current_frame = self.center_crop(current_frame_rotated, 1366, 768)
+                current_frame = self.center_crop(current_frame_captured, 1366, 768)
 ##                current_frame = self.center_crop(current_frame_rotated, 1600, 900)
-                current_frame = current_frame_captured
 
                 self.frame_count += 1
 
@@ -764,7 +920,13 @@ class ScreenTextMonitor:
                 # Сохранение оригинального изображения
                 orig_image = self.save_image(current_frame, "original")
 #                orig_image = "images/Screenshot 2025-10-23 09-58-38.png"
-                self.send_capture_sync(orig_image)
+
+                # Основной вариант (рекомендуемый)
+                optimized_image_path = self.optimize_image_for_send(orig_image,
+                                                    scale_factor=0.5,
+                                                    quality=75)  # Еще сильнее сжимаем
+
+                self.send_capture_sync(optimized_image_path)
 
 #                processed_image = self.preprocess_image(current_frame)
 
@@ -776,6 +938,12 @@ class ScreenTextMonitor:
                 if text is None:
                     # Обработка случая, когда OCR вернул None (произошла ошибка)
                     print("OCR завершился с ошибкой")
+                    continue
+                elif len(text) == 0:
+                    # Обработка случая, когда ничего не распознано вообще, закрыта крышка?
+                    print("Нет текста для распознавания")
+                    # Сохраняем фрейм, так как в нём нет ничего плохoго
+                    self.previous_frame = current_frame
                     continue
                 elif isinstance(text, str) and "OCR error" in text:
                     # Обработка случая, когда OCR вернул строку с ошибкой
