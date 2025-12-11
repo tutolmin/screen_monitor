@@ -556,21 +556,15 @@ class ScreenTextMonitor:
             self.log_message(f"Другая ошибка: {e}")
             return {"error": f"Ошибка при обработке ответа"}
 
-#    def send_capture_sync(self, image, **kwargs):
-#        """
-#        Синхронный метод для отправки уведомлений
-#        """
-#        async def async_wrapper():
-#            async with TelegramClient(self.session_name, self.api_id, self.api_hash) as client:
-#                self.client = client
-#                await self._send_capture_async(image, **kwargs)
-#        
-#        asyncio.run(async_wrapper())
-
     def send_capture_sync(self, image_path, **kwargs):
         """
         Синхронный метод для отправки изображений с обработкой асинхронного контекста
         """
+        # Проверяем существование файла перед отправкой
+        if not os.path.exists(image_path):
+            self.log_message(f"Ошибка: файл не существует - {image_path}")
+            return
+
         async def async_wrapper():
             async with TelegramClient(self.session_name, self.api_id, self.api_hash) as client:
                 self.client = client
@@ -772,6 +766,7 @@ class ScreenTextMonitor:
             # Сохраняем с максимальным сжатием (низкое качество JPEG)
             cv2.imwrite(optimized_path, optimized_img, 
                         [cv2.IMWRITE_JPEG_QUALITY, quality])
+            del optimized_img  # Освобождаем память
             
             # Сравниваем размеры файлов
             orig_size = os.path.getsize(image_path) / 1024  # в КБ
