@@ -153,17 +153,19 @@ class ScreenTextMonitor:
         # Устанавливаем размер буфера в 1 (самый новый кадр)
         self.cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
 
-        self.api_id = os.getenv["TG_API_ID"]
-        self.api_hash = os.getenv["TG_API_HASH"]
-        self.session_name = "beep"
-
         self.search_query = ""
         # Берем пути из переменных окружения
         key_path = os.getenv('YANDEX_SERVICE_ACCOUNT_KEY_PATH', 'keys/authorized_key.json')
         self.auth_manager = YandexCloudAuthManager(key_path)
         
-        # Сохраняем folder_id из переменных окружения
+        self.session_name = "beep"
+
+        self.api_id = os.getenv("TG_API_ID")
+        self.api_hash = os.getenv("TG_API_HASH")
         self.folder_id = os.getenv('YANDEX_FOLDER_ID')
+
+        if not all([self.api_id, self.api_hash, self.folder_id]):
+            raise ValueError("Не заданы обязательные переменные окружения: TG_API_ID, TG_API_HASH, YANDEX_FOLDER_ID")
 
     def log_message(self, message):
         timestamp = datetime.now().strftime('%H:%M:%S')
@@ -328,7 +330,7 @@ class ScreenTextMonitor:
     def query_gigachat_reason(self, text):
 
         giga = GigaChat(
-            credentials=os.getenv["GIGACHAT_CREDENTIALS"],
+            credentials=os.environ["GIGACHAT_CREDENTIALS"],
             model="GigaChat",
 #            model="GigaChat",
             verify_ssl_certs=False,
@@ -452,7 +454,7 @@ class ScreenTextMonitor:
     def query_gigachat_rag(self, text):
 
         giga = GigaChat(
-            credentials=os.getenv["GIGACHAT_CREDENTIALS"],
+            credentials=os.environ["GIGACHAT_CREDENTIALS"],
             model="GigaChat",
 #            model="GigaChat",
             verify_ssl_certs=False,
@@ -636,7 +638,7 @@ class ScreenTextMonitor:
     def query_gigachat_task_type(self, text):
 
         giga = GigaChat(
-            credentials=os.getenv["GIGACHAT_CREDENTIALS"],
+            credentials=os.environ["GIGACHAT_CREDENTIALS"],
             model="GigaChat",
             verify_ssl_certs=False,
             timeout=30,
