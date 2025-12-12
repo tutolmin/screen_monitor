@@ -659,17 +659,20 @@ class ScreenTextMonitor:
             self.log_message(f"Ошибка: {e}")
 
 
-    def query_gigachat_task_type(self, text):
+	def query_gigachat_task_type(self, text):
+		# Инициализируем массив для хранения хэшей, если ещё не инициализирован
+		if not hasattr(self, '_seen_task_hashes'):
+			self._seen_task_hashes = set()
+		
+		giga = GigaChat(
+			credentials=os.environ["GIGACHAT_CREDENTIALS"],
+			model="GigaChat",
+			verify_ssl_certs=False,
+			timeout=30,
+		)
 
-        giga = GigaChat(
-            credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            model="GigaChat",
-            verify_ssl_certs=False,
-            timeout=30,
-        )
-
-        # Промпт для извлечения поискового запроса
-        query_extraction_prompt = ChatPromptTemplate.from_template("""
+		# Промпт для извлечения поискового запроса
+		query_extraction_prompt = ChatPromptTemplate.from_template("""
 Перед тобой текст, распознанный со скриншота (снимка экрана).
 Текст содержит экзаменационное задание с несколькими вариантами ответа.
 Кроме этого в тексте могут встречаться всевозможные паразитные символы, которые были распознаны ошибочно.
@@ -682,48 +685,66 @@ class ScreenTextMonitor:
 
 Далее идёт распознанный текст, который необходимо обработать: {input} """)
 
-        # Цепочка для извлечения запроса
-        query_extraction_chain = query_extraction_prompt | giga
+		# Цепочка для извлечения запроса
+		query_extraction_chain = query_extraction_prompt | giga
 
-        def extract_with_llm(full_input):
-            """Использует LLM для извлечения поискового запроса"""
-            text = full_input["input"]
-            search_query = ""
-            try:
-#                search_query = query_extraction_chain.invoke({"input": text}, config={"callbacks": [ConsoleCallbackHandler()]}).content
-                search_query = query_extraction_chain.invoke({"input": text}).content
-            except Exception as e:
-                self.log_message(f"Ошибка запроса к LLM: {e}")
-            print(f"🔍 Извлеченный поисковый запрос: '{search_query}'")
-            return search_query
+		def extract_with_llm(full_input):
+			"""Использует LLM для извлечения поискового запроса"""
+			text = full_input["input"]
+			search_query = ""
+			try:
+				search_query = query_extraction_chain.invoke({"input": text}).content
+			except Exception as e:
+				self.log_message(f"Ошибка запроса к LLM: {e}")
+			print(f"🔍 Извлеченный поисковый запрос: '{search_query}'")
+			return search_query
 
-        # Промпт для классификации задания - должен быть ChatPromptTemplate
-        classification_prompt = ChatPromptTemplate.from_template(""" 
+		# Шаг 1: Извлекаем search_query
+		self.search_query = extract_with_llm({"input": text})
+		
+		# Шаг 2: Создаём хэш извлечённого задания
+		import hashlib
+		task_hash = hashlib.md5(self.search_query.strip().encode()).hexdigest()
+		print(f"📝 Хэш задания: {task_hash[:8]}...")
+		
+		# Шаг 3: Проверяем, видели ли уже это задание
+		if task_hash in self._seen_task_hashes:
+			print(f"🔄 Задание уже встречалось ранее. Возвращаем тип 2 (анализ)")
+			# Добавляем в логи для отладки
+			self.log_message(f"Повторное задание, хэш: {task_hash[:8]}..., принудительно тип 2")
+			return "2"
+		
+		# Шаг 4: Если задание новое - сохраняем хэш и продолжаем классификацию
+		self._seen_task_hashes.add(task_hash)
+		print(f"💾 Новое задание, сохранён хэш: {task_hash[:8]}...")
+		
+		# Промпт для классификации задания
+		classification_prompt = ChatPromptTemplate.from_template(""" 
 Классифицируй экзаменационное задание.
-Выбери один из вариантов: 1 - Проверка знания определённого факта, 2 - Анализ, выведение или вычисление ответа в результате рассуждения.
-Если для нахождения ответа не требуется строить логическую цепочку или выполнять вычисления, значит задание первого типа. Если необходимо что-то проанализировать или вычислить - второго.
+Выбери один из вариантов: 
+1 - Проверка знания определённого факта
+2 - Анализ, выведение или вычисление ответа в результате рассуждения.
+Если для нахождения ответа не требуется строить логическую цепочку или выполнять вычисления, значит задание первого типа. 
+Если же необходимо что-то проанализировать или вычислить - второго.
 
 Формат ответа: Тип задания (только цифра 1 или 2).
 
 Текст задания: {search_query}""")
 
-        # Создаем цепочку для классификации
-        classification_chain = classification_prompt | giga
+		# Создаем цепочку для классификации
+		classification_chain = classification_prompt | giga
 
-        # Шаг 1: Извлекаем search_query
-        self.search_query = extract_with_llm({"input": text})
-        result = "2" 
-        try:
-            # Шаг 2: Классифицируем используя ТОЛЬКО search_query
-#            result = classification_chain.invoke({"search_query": self.search_query}, config={"callbacks": [ConsoleCallbackHandler()]})
-            result = classification_chain.invoke({"search_query": self.search_query})
-        except Exception as e:
-            self.log_message(f"Ошибка запроса к LLM: {e}")
+		result = "2" 
+		try:
+			# Шаг 5: Классифицируем задание через LLM
+			result = classification_chain.invoke({"search_query": self.search_query})
+		except Exception as e:
+			self.log_message(f"Ошибка запроса к LLM: {e}")
 
-        final_result = result.content if hasattr(result, 'content') else result
-        
-        print(f"📊 Тип задания: {final_result}")
-        return final_result
+		final_result = result.content if hasattr(result, 'content') else result
+		
+		print(f"📊 Тип задания: {final_result}")
+		return final_result
 
     def optimize_image_for_send(self, image_path, scale_factor=0.25, quality=60):
         """
@@ -796,12 +817,12 @@ class ScreenTextMonitor:
 
                 # Поворот кадра
 ##                current_frame_rotated = cv2.rotate(current_frame_captured, cv2.ROTATE_180)
-#                current_frame_rotated = cv2.flip(current_frame_captured, -1)
+                current_frame_rotated = cv2.flip(current_frame_captured, -1)
 
                 # Обрезаем до 1280x720 если они больше
 ##                current_frame = self.center_crop(current_frame_rotated, 1280, 720)
-#                current_frame = self.center_crop(current_frame_rotated, 1366, 768)
-                current_frame = self.center_crop(current_frame_captured, 1366, 768)
+                current_frame = self.center_crop(current_frame_rotated, 1366, 768)
+#                current_frame = self.center_crop(current_frame_captured, 1366, 768)
 ##                current_frame = self.center_crop(current_frame_rotated, 1600, 900)
 
                 self.frame_count += 1
@@ -868,13 +889,6 @@ class ScreenTextMonitor:
                 self.log_message("Запрос модели...")
                 answer = self.query_gigachat_task_type(text)
 
-                # Вывод результата
-#                print("\n" + "="*50)
-#                print("ОТВЕТ МОДЕЛИ CLASSY:")
-#                print("="*50)
-#                print(answer)
-#                print("="*50)
-
                 # factual
                 if answer == "1":
 #                    answer = self.query_gigachat_reason(text)
@@ -892,14 +906,14 @@ class ScreenTextMonitor:
 
                 # Отправляем уведомления
                 self.log_message("\nОтправка уведомлений...")
-# DUMMY
-                self.send_notifications_sync(
-#                    numbers=numbers,
-                    answers=answer,
-                    recipient='LinuxGodsWorkaholicBot',
-                    delay_between_messages=3,
-                    delay_between_numbers=7
-                )
+## DUMMY
+#                self.send_notifications_sync(
+##                    numbers=numbers,
+#                    answers=answer,
+#                    recipient='LinuxGodsWorkaholicBot',
+#                    delay_between_messages=3,
+#                    delay_between_numbers=7
+#                )
 
                 # Сохранение текущего кадра как предыдущего
                 self.previous_frame = current_frame
@@ -930,7 +944,7 @@ class ScreenTextMonitor:
 def main():
     # Настройки
     CAMERA_INDEX = 0  # 0 - обычно встроенная камеры, 1 - внешняя камера
-    SIMILARITY_THRESHOLD = 0.99  # 95% схожести
+    SIMILARITY_THRESHOLD = 0.995  # 95% схожести
 
     try:
         monitor = ScreenTextMonitor(
