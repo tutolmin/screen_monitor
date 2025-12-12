@@ -659,20 +659,20 @@ class ScreenTextMonitor:
             self.log_message(f"Ошибка: {e}")
 
 
-	def query_gigachat_task_type(self, text):
-		# Инициализируем массив для хранения хэшей, если ещё не инициализирован
-		if not hasattr(self, '_seen_task_hashes'):
-			self._seen_task_hashes = set()
-		
-		giga = GigaChat(
-			credentials=os.environ["GIGACHAT_CREDENTIALS"],
-			model="GigaChat",
-			verify_ssl_certs=False,
-			timeout=30,
-		)
+    def query_gigachat_task_type(self, text):
+        # Инициализируем массив для хранения хэшей, если ещё не инициализирован
+        if not hasattr(self, '_seen_task_hashes'):
+            self._seen_task_hashes = set()
+        
+        giga = GigaChat(
+            credentials=os.environ["GIGACHAT_CREDENTIALS"],
+            model="GigaChat",
+            verify_ssl_certs=False,
+            timeout=30,
+        )
 
-		# Промпт для извлечения поискового запроса
-		query_extraction_prompt = ChatPromptTemplate.from_template("""
+        # Промпт для извлечения поискового запроса
+        query_extraction_prompt = ChatPromptTemplate.from_template("""
 Перед тобой текст, распознанный со скриншота (снимка экрана).
 Текст содержит экзаменационное задание с несколькими вариантами ответа.
 Кроме этого в тексте могут встречаться всевозможные паразитные символы, которые были распознаны ошибочно.
@@ -685,41 +685,41 @@ class ScreenTextMonitor:
 
 Далее идёт распознанный текст, который необходимо обработать: {input} """)
 
-		# Цепочка для извлечения запроса
-		query_extraction_chain = query_extraction_prompt | giga
+        # Цепочка для извлечения запроса
+        query_extraction_chain = query_extraction_prompt | giga
 
-		def extract_with_llm(full_input):
-			"""Использует LLM для извлечения поискового запроса"""
-			text = full_input["input"]
-			search_query = ""
-			try:
-				search_query = query_extraction_chain.invoke({"input": text}).content
-			except Exception as e:
-				self.log_message(f"Ошибка запроса к LLM: {e}")
-			print(f"🔍 Извлеченный поисковый запрос: '{search_query}'")
-			return search_query
+        def extract_with_llm(full_input):
+            """Использует LLM для извлечения поискового запроса"""
+            text = full_input["input"]
+            search_query = ""
+            try:
+                search_query = query_extraction_chain.invoke({"input": text}).content
+            except Exception as e:
+                self.log_message(f"Ошибка запроса к LLM: {e}")
+            print(f"🔍 Извлеченный поисковый запрос: '{search_query}'")
+            return search_query
 
-		# Шаг 1: Извлекаем search_query
-		self.search_query = extract_with_llm({"input": text})
-		
-		# Шаг 2: Создаём хэш извлечённого задания
-		import hashlib
-		task_hash = hashlib.md5(self.search_query.strip().encode()).hexdigest()
-		print(f"📝 Хэш задания: {task_hash[:8]}...")
-		
-		# Шаг 3: Проверяем, видели ли уже это задание
-		if task_hash in self._seen_task_hashes:
-			print(f"🔄 Задание уже встречалось ранее. Возвращаем тип 2 (анализ)")
-			# Добавляем в логи для отладки
-			self.log_message(f"Повторное задание, хэш: {task_hash[:8]}..., принудительно тип 2")
-			return "2"
-		
-		# Шаг 4: Если задание новое - сохраняем хэш и продолжаем классификацию
-		self._seen_task_hashes.add(task_hash)
-		print(f"💾 Новое задание, сохранён хэш: {task_hash[:8]}...")
-		
-		# Промпт для классификации задания
-		classification_prompt = ChatPromptTemplate.from_template(""" 
+        # Шаг 1: Извлекаем search_query
+        self.search_query = extract_with_llm({"input": text})
+        
+        # Шаг 2: Создаём хэш извлечённого задания
+        import hashlib
+        task_hash = hashlib.md5(self.search_query.strip().encode()).hexdigest()
+        print(f"📝 Хэш задания: {task_hash[:8]}...")
+        
+        # Шаг 3: Проверяем, видели ли уже это задание
+        if task_hash in self._seen_task_hashes:
+            print(f"🔄 Задание уже встречалось ранее. Возвращаем тип 2 (анализ)")
+            # Добавляем в логи для отладки
+            self.log_message(f"Повторное задание, хэш: {task_hash[:8]}..., принудительно тип 2")
+            return "2"
+        
+        # Шаг 4: Если задание новое - сохраняем хэш и продолжаем классификацию
+        self._seen_task_hashes.add(task_hash)
+        print(f"💾 Новое задание, сохранён хэш: {task_hash[:8]}...")
+        
+        # Промпт для классификации задания
+        classification_prompt = ChatPromptTemplate.from_template(""" 
 Классифицируй экзаменационное задание.
 Выбери один из вариантов: 
 1 - Проверка знания определённого факта
@@ -731,20 +731,20 @@ class ScreenTextMonitor:
 
 Текст задания: {search_query}""")
 
-		# Создаем цепочку для классификации
-		classification_chain = classification_prompt | giga
+        # Создаем цепочку для классификации
+        classification_chain = classification_prompt | giga
 
-		result = "2" 
-		try:
-			# Шаг 5: Классифицируем задание через LLM
-			result = classification_chain.invoke({"search_query": self.search_query})
-		except Exception as e:
-			self.log_message(f"Ошибка запроса к LLM: {e}")
+        result = "2" 
+        try:
+            # Шаг 5: Классифицируем задание через LLM
+            result = classification_chain.invoke({"search_query": self.search_query})
+        except Exception as e:
+            self.log_message(f"Ошибка запроса к LLM: {e}")
 
-		final_result = result.content if hasattr(result, 'content') else result
-		
-		print(f"📊 Тип задания: {final_result}")
-		return final_result
+        final_result = result.content if hasattr(result, 'content') else result
+        
+        print(f"📊 Тип задания: {final_result}")
+        return final_result
 
     def optimize_image_for_send(self, image_path, scale_factor=0.25, quality=60):
         """
