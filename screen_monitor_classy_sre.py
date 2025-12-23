@@ -302,15 +302,15 @@ class ScreenTextMonitor:
 #            print(json.dumps(response_json, indent=2, ensure_ascii=False))
 
 # DUMMY
-#            print("Введите текст кейса (Ctrl+D или Ctrl+Z для завершения):")
-#            lines = []
-#            while True:
-#                try:
-#                    line = input()
-#                except EOFError:
-#                    break
-#                lines.append(line)
-#            response_json["result"]["textAnnotation"]["fullText"] = '\n'.join(lines)
+            print("Введите текст кейса (Ctrl+D или Ctrl+Z для завершения):")
+            lines = []
+            while True:
+                try:
+                    line = input()
+                except EOFError:
+                    break
+                lines.append(line)
+            response_json["result"]["textAnnotation"]["fullText"] = '\n'.join(lines)
 
             # clear headers
 #            pattern = r'^СБЕР\n|^УНИВЕРСИТЕТ\n|^НАЗАД\n|^ПРОПУСТИТЬ.*\n|^ЗАВЕРШИТЬ\n|Пройден.*\n|^Сбер Мини-МВА.*\n|^Прокторинг.*\n'
@@ -335,7 +335,7 @@ class ScreenTextMonitor:
 
         giga = GigaChat(
             credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            model="GigaChat",
+            model="GigaChat-Max",
 #            model="GigaChat",
             verify_ssl_certs=False,
             timeout=30,
@@ -460,7 +460,7 @@ class ScreenTextMonitor:
 
         giga = GigaChat(
             credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            model="GigaChat",
+            model="GigaChat-Max",
 #            model="GigaChat",
             verify_ssl_certs=False,
             timeout=30,
@@ -666,7 +666,8 @@ class ScreenTextMonitor:
         
         giga = GigaChat(
             credentials=os.environ["GIGACHAT_CREDENTIALS"],
-            model="GigaChat",
+            model="GigaChat-Max",
+#            model="GigaChat",
             verify_ssl_certs=False,
             timeout=30,
         )
@@ -840,8 +841,8 @@ class ScreenTextMonitor:
                         print("Изменения незначительные, пропускаем обработку")
                         self.previous_frame = current_frame
 # DUMMY                        
-                        time.sleep(20 - (time.time() - start_time))
-                        continue
+#                        time.sleep(20 - (time.time() - start_time))
+#                        continue
 
                 # Обработка изображения
                 print("Обнаружены значительные изменения, обрабатываем изображение...")
