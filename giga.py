@@ -1,8 +1,13 @@
 from gigachat import GigaChat
+from dotenv import load_dotenv
+import os
+
+# Загружаем переменные окружения из файла .env
+load_dotenv()
 
 giga = GigaChat(
-   credentials="ZGIyMTNkN2QtNjBlMy00OWM3LWI3OTQtNWM5MjliYTk1N2E2OmI4MDNlNThmLTdhNDMtNDE1Yy1hMTU2LWRjYTFiYzJmODdhMQ==",
-   model="GigaChat",
+    credentials=os.environ["GIGACHAT_CREDENTIALS"],
+    model="GigaChat",
 )
 
 #response = giga.chat("Расскажи о себе в двух словах?")

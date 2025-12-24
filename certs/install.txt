@@ -2,3 +2,8 @@ sudo mkdir /usr/local/share/ca-certificates/russian
 sudo cp certs/russian_trusted_root_ca_pem.crt certs/russian_trusted_sub_ca_pem.crt /usr/local/share/ca-certificates/russian/
 sudo update-ca-certificates -v
 trust list|grep Russian
+
+# put this in ~/.bashrc
+#export REQUESTS_CA_BUNDLE="/etc/ssl/certs/ca-certificates.crt"
+#export SSL_CERT_FILE="/etc/ssl/certs/ca-certificates.crt"
+
