@@ -260,17 +260,29 @@ def perform_ocr(image_path, auth_manager, folder_id):
               "x-folder-id": folder_id,
               "x-data-logging-enabled": "true"}
 
-    try:
-        w = requests.post(url=url, headers=headers, data=json.dumps(data), timeout=30)
-    except Exception as ex:
-        log_message(f"OCR exception: {str(ex)}")
-        return f"OCR error: {str(ex)}"
+    for attempt in range(3):
+        try:
+            w = requests.post(url=url, headers=headers, data=json.dumps(data), timeout=30)
+            if w.status_code == 200:
+                break
+            time.sleep(1)
+        except Exception as ex:
+            log_message(f"OCR exception: {str(ex)}")
+            if attempt == 2:
+                raise
+            time.sleep(3)
 
-    log_message(f"Status Code: {w.status_code}")
-
-    if w.status_code != 200:
-        return f"OCR error: {w.status_code} - {w.text}"
-
+#    try:
+#        w = requests.post(url=url, headers=headers, data=json.dumps(data), timeout=30)
+#    except Exception as ex:
+#        log_message(f"OCR exception: {str(ex)}")
+#        return f"OCR error: {str(ex)}"
+#
+#    log_message(f"Status Code: {w.status_code}")
+#
+#    if w.status_code != 200:
+#        return f"OCR error: {w.status_code} - {w.text}"
+#
     try:
         response_json = w.json()
 #        print("Response JSON:")
@@ -391,8 +403,8 @@ def main():
             log_message(f"[CRIT] Критическая ошибка при обработке {photo_path.name}: {e}")
             # Продолжить обработку следующего файла
             continue
-        time.sleep(1.5)
-        break
+#        time.sleep(1.5)
+#        break
 
     log_message("Обработка завершена.")
 
