@@ -22,8 +22,8 @@ import jwt
 import json
 import threading
 from dotenv import load_dotenv
-import cv2
-import numpy as np
+#import cv2
+#import numpy as np
 import base64
 import requests
 
@@ -154,6 +154,10 @@ def get_photo_files(directory, extensions=None):
     """
     Получить список файлов фото по типу или маске.
     """
+    input_dir = input_dir.resolve()
+    if not input_dir.is_relative_to(Path.cwd().resolve()):
+        raise ValueError("Путь выходит за пределы рабочей директории")
+
     if extensions is None:
         extensions = {'.jpg', '.jpeg', '.png', '.bmp', '.tiff', '.webp'}
     photo_files = []
@@ -177,13 +181,13 @@ def process_image(image_path):
         with Image.open(image_path) as img:
             # Примеры базовой обработки
             # Поворот (например, поворот на 90 градусов)
-#            processed_img = img.rotate(360, expand=True)
+            processed_img = img.rotate(360, expand=True)
 
-            numpy_img = np.array(img.convert('RGB'))
+#            numpy_img = np.array(img.convert('RGB'))
 
 #            # Поворот кадра
 ###                current_frame_rotated = cv2.rotate(current_frame_captured, cv2.ROTATE_180)
-            processed_img = cv2.flip(numpy_img, -1)
+#            processed_img = cv2.flip(numpy_img, -1)
 #
 #            # Обрезаем до 1280x720 если они больше
 ###                current_frame = self.center_crop(current_frame_rotated, 1280, 720)
@@ -207,7 +211,7 @@ def process_image(image_path):
             # return processed_img.copy()
 
             # 4. Преобразование результата обратно в PIL Image
-            processed_img = Image.fromarray(processed_img, mode='RGB')
+#            processed_img = Image.fromarray(processed_img, mode='RGB')
 
             return processed_img # Возвращаем оригинальное изображение как пример
 
@@ -360,7 +364,7 @@ def main():
     log_message(f"Поиск файлов в: {input_dir}")
     log_message(f"Результаты будут сохранены в: {output_dir}")
 
-    photo_files = get_photo_files(input_dir, '.png')
+    photo_files = get_photo_files(input_dir, {'.png'})
 
     if not photo_files:
         log_message(f"Фотографии не найдены в {input_dir}")
@@ -387,6 +391,7 @@ def main():
             log_message(f"[CRIT] Критическая ошибка при обработке {photo_path.name}: {e}")
             # Продолжить обработку следующего файла
             continue
+        time.sleep(1.5)
         break
 
     log_message("Обработка завершена.")
