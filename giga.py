@@ -1,7 +1,8 @@
 from gigachat import GigaChat
+import os
 
 giga = GigaChat(
-   credentials="ZGIyMTNkN2QtNjBlMy00OWM3LWI3OTQtNWM5MjliYTk1N2E2OmI4MDNlNThmLTdhNDMtNDE1Yy1hMTU2LWRjYTFiYzJmODdhMQ==",
+   credentials=os.environ["GIGACHAT_CREDENTIALS"],
    model="GigaChat",
 )
 

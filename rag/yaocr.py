@@ -12,12 +12,21 @@ def encode_file(file_path):
 #data = {"mimeType": "image/png",
 data = {"mimeType": "application/pdf",
         "languageCodes": ["ru","en"],
-        "content": encode_file("problems/1/slide_001.pdf")}
-#        "content": encode_file("images/Screenshot 2025-10-23 09-58-38.png")}
-#        "content": encode_file("/var/tmp/screens/original_20251021_113151_1.png")}
-#        "content": encode_file("images/8930.jpg")}
+        "model": "page",
+#        "content": encode_file("/home/andrei/problems/merged_webinars.pdf")}
+#        "content": encode_file("/home/andrei/analytics/Основы аналитики и управления данными, В2_ Тренды в больших языковых моделях.pdf")}
+#        "content": encode_file("/home/andrei/energy/merged_modules.pdf")}
+#        "content": encode_file("/home/andrei/energy/merged_webinars.pdf")}
+#        "content": encode_file("/home/andrei/leadership/merged_modules.pdf")}
+#        "content": encode_file("/home/andrei/leadership/merged_webinars.pdf")}
+#        "content": encode_file("/home/andrei/communications_merged.pdf")}
+##        "content": encode_file("problems/1/slide_001.pdf")}
+##        "content": encode_file("images/Screenshot 2025-10-23 09-58-38.png")}
+##        "content": encode_file("/var/tmp/screens/original_20251021_113151_1.png")}
+##        "content": encode_file("images/8930.jpg")}
 
-url = "https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText"
+#url = "https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText"
+url = "https://ocr.api.cloud.yandex.net/ocr/v1/recognizeTextAsync"
 
 token = ""
 
@@ -25,6 +34,10 @@ headers= {"Content-Type": "application/json",
           "Authorization": "Bearer {:s}".format(token),
           "x-folder-id": "b1ghg3qttqeg3e6qpgp5",
           "x-data-logging-enabled": "true"}
+
+print(json.dumps(data))
+
+exit(0)
 
 w = requests.post(url=url, headers=headers, data=json.dumps(data))
 

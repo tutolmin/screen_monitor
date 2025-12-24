@@ -29,7 +29,6 @@ embeddings = GigaChatEmbeddings(
 )
 
 persist_directory = "./chroma_db_u_web"
-#persist_directory = "./chroma_db_c_pres"
 
 # Загружаем базу
 db = Chroma(
@@ -77,7 +76,7 @@ embeddings_pres = GigaChatEmbeddings(
 
 # БД для презентаций
 
-persist_directory = "./chroma_db_c_pres"
+persist_directory = "./chroma_db_u_pres"
 
 # Загружаем базу
 db_pres = Chroma(
