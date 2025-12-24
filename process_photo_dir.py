@@ -154,7 +154,7 @@ def get_photo_files(directory, extensions=None):
     """
     Получить список файлов фото по типу или маске.
     """
-    input_dir = input_dir.resolve()
+    input_dir = directory.resolve()
     if not input_dir.is_relative_to(Path.cwd().resolve()):
         raise ValueError("Путь выходит за пределы рабочей директории")
 
