@@ -22,7 +22,9 @@ from langchain.text_splitter import (
 #loader = TextLoader("problems/problem_p.txt")
 #loader = TextLoader("problems/problem_p1m.txt")
 #loader = TextLoader("UX/slides_m.txt")
-loader = TextLoader("finance/slides_pres_m.txt")
+loader = TextLoader("/home/andrei/UX/slides_m.txt")
+#loader = TextLoader("finance/slides_pres_m.txt")
+#loader = TextLoader("/home/andrei/communications/communications_merged.md")
 documents = loader.load()
 
 # 2. Specify the headers to split on
@@ -54,13 +56,15 @@ embeddings = GigaChatEmbeddings(
 
 # Указываем путь для сохранения
 #persist_directory = "./chroma_db_p_pres"
-#persist_directory = "./chroma_db_u_pres"
-persist_directory = "./chroma_db_f_pres"
+persist_directory = "/home/andrei/chroma_db_u_pres_cos"
+#persist_directory = "./chroma_db_f_pres"
+#persist_directory = "/home/andrei/chroma_db_c_pres_cos"
 db = Chroma.from_documents(
     documents,
     embeddings,
     client_settings=Settings(anonymized_telemetry=False),
-    persist_directory=persist_directory  # Добавляем путь для сохранения
+    persist_directory=persist_directory,  # Добавляем путь для сохранения
+    collection_metadata={"hnsw:space": "cosine"}
 )
 
 # Явно сохраняем базу
